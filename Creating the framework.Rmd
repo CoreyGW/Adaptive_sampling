@@ -1,0 +1,223 @@
+--
+title: "Adaptive Sampling simulations"
+author: "Corey Williams"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Motivation for adaptive sampling
+In many scenarios we would like to be able to adaptively increase sampling effort when certain observed values are of interest. This would be especially beneficial in the case where we are try to observe rare events that are likely to be clustered together. For example a rare plant species that has very particular growing conditions. This would be the case where it may be very rare to see the plant but if we see one we see 100 and it is desired to be able to sample all of the plants in the cluster.
+
+# Simulations
+First I'll write a few functions that I think will be helpful in making this adaptive sampling demonstration. I want to recreate the example in Adaptive cluster Sampling (1990) where there are points distributed in clusters in an area. The area is split into a grid, then grid cells are chosen as the primary sampling unit.
+
+Goals:
+
+- choose a number of clusters
+  - easy enough, this can just be rpois(1,n), this will choose a number of clusters randomly based on some mean. We could use any discrete distribution to decide this
+- generate points in those clusters
+  - decide how many points are in each cluster, this it is probably actually most appropriate to use a poisson distribution since it will be a count.
+ - at this step I also need to choose the locations of the centers, runif(ncenters,0,20)
+  - I can then generate points normally distributed around these centers using rnorm(ncenters*2,mu,sd)
+- choose a sample of initial grid cells
+  - sample(1:ncells,n)
+- expand if the cell next to it is occupied
+  - need a list of currently occupied cells and a way to determine adjacent cells. maybe just a vector called occupied
+  - function takes vector of neighbours, checks against vector of occupied, returns neighbors in occupied
+
+
+## write helpful functions
+
+```{r}
+require(tidyverse)
+```
+
+### make clusters
+```{r}
+make_clusters<-function(grid_size=20, nclusters=3, avg_size=20){
+  # create a list of clusters.
+  centers<-split(runif(nclusters*2,0,grid_size),seq(nclusters))
+  # get the three cluster sizes
+  sizes<-rpois(3,avg_size)
+  # get list of matrices of the centers
+  center_dfs<-map2(sizes,centers,
+                   ~ kronecker(matrix(rep(1,.x),ncol=1), matrix(.y,ncol=2)))
+                              # I actually used the kronecker product holy crap!
+  # get coordinates of locations
+  locations<-sizes %>% # use sizes
+    map(~data.frame(matrix(rnorm(.x*2),ncol=2))) %>% # make list of df of changes from centers
+    map2(.y=center_dfs,~.x+.y) %>% # add the changes on to the center
+    map2(.y=seq(nclusters), ~ mutate(.x, Group=paste("Cluster",.y)))%>%
+    bind_rows()
+}
+```
+
+### make clusters
+```{r}
+plot_clusters<-function(cluster_df, grid_size=20,samp=NULL){
+  # create a plot of the clusters
+  p<-ggplot(cluster_df, aes(x=X1, y=X2, color=Group))+
+    geom_point()+
+    scale_x_continuous(breaks=seq(grid_size))+
+    scale_y_continuous(breaks=seq(grid_size))+
+    coord_cartesian(xlim=c(0,grid_size), ylim=c(0,grid_size))+
+    coord_equal()
+  if(!is.null(samp)){
+    # this will highlight tiles that are sampled
+    # samp is the dataframe containing the coordinates for tiles
+    p<-p+geom_rect(data=samp, 
+                   aes(x=X, y=Y, xmin=X-1, xmax=X, ymin=Y-1, ymax=Y),
+                   color="black",
+                   fill=NA)
+  }
+  p
+}
+```
+
+### Check whether a tile is occupied
+```{r}
+is_occupied<-function(tile=c(1,1),df){
+  # check if a tile is occupied tile location is given as c(row,column)
+  # give a dataframe with coordinates of point
+  # check if there are any points in xrange & yrange at the same time
+  #sum((df[,1]<tile[2] & df[,1]>tile[2]-1) * (df[,1]<tile[2] & df[,1]>tile[2]-1))>0
+  
+  sum((df[,1]<tile[1]&df[,1]>tile[1]-1) & (df[,2]<tile[2] & df[,2]>tile[2]-1))>0
+}
+```
+
+
+### get the neighbours of a tile
+```{r}
+get_neighbours<- function(tile=c(1,1), hard_border=TRUE,gridsize=20){
+  # gets a list of neighbouring tiles
+  neighbours<-list(c(tile[1]-1,tile[2]),
+                   c(tile[1],tile[2]-1),
+                   c(tile[1]+1,tile[2]),
+                   c(tile[1],tile[2]+1))
+  if(hard_border){
+    # do we want to include neighbours outside of the grid?
+    # returns the neighbours that are only within the border
+    neighbours<-neighbours[map_lgl(neighbours, ~prod(c(.x>0,.x<=grid_size)))]
+  }
+  # returns list of neighbours for a given tile 
+  neighbours
+}
+```
+
+### choose tiles for sample
+
+```{r}
+get_tiles<-function(gridsize=20,n1=10,...){
+  # this function returns a sample of n1 tiles using a square gridsize grid
+  # get a tile
+  tiles<-sample(1:gridsize^2,n1,...)
+  # convert tile numbers into X and Y
+  samp<-data.frame(X=tiles%%gridsize, Y=(tiles-1)%/%grid_size+1)
+  samp$X[samp$X==0]<-gridsize
+  samp
+}
+
+```
+
+### perform the simulation
+```{r}
+simulate_one<-function(nclusters=3, grid_size=20,... ){
+  # generate clusters
+  points<-make_clusters()
+  # choose the starting grid cells
+  sample_tiles<-get_tiles(...)
+  # save a copy to check against for updates
+  temp<-sample_tiles
+  # check whether or not they are occupied based on the clusters
+  occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
+  # find the neighbours of the occupied points
+  neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
+    bind_rows() %>% # turn list of neighbours into tibble
+    as.data.frame() # into dataframe
+  # update sample tiles to include neighbours
+  sample_tiles<-rbind(sample_tiles,neighbours) %>%
+    unique()
+  
+  # keep looping until sample_tiles does not grow
+  while(dim(temp)[1]!=dim(sample_tiles)[1]){ 
+    # save a copy to check against for updates
+    temp<-sample_tiles
+    # check whether or not they are occupied based on the clusters
+    occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
+    # find the neighbours of the occupied points
+    neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
+      bind_rows() %>% # turn list of neighbours into tibble
+      as.data.frame() # into dataframe
+    # update sample tiles to include neighbours
+    sample_tiles<-sample_tiles %>%
+      bind_rows(neighbours) %>%
+      unique()
+  }
+  return(list(sample_tiles=cbind(sample_tiles,occupied),points=points))
+}
+
+
+```
+
+## Demonstrating the function works to generate a sample
+```{r}
+sample_one<-simulate_one(n1=10,nclusters=3, grid_size=20)
+plot_clusters(sample_one$points,samp=sample_one$sample_tiles)
+```
+
+
+When trying to write this simulation the largest issue I ran in to was determining how to treat points that lie outside of the grid. Should they be included in the sample? should they be ignored? should I change the generating mechanism to force points to be bounded by the edges? There are lots of things you need to specify in regards to how the points are generated. This seems like it could also be an issue that comes up in practical situations as well, for example the case where you have a defined area you are allowed to collect samples from but the thing you are measuring can occur up to and outside of that area. It seems like we would be underestimating the average number in the greater population if those are excluded from the cluster since it means we are underestimating the cluster size.
+
+# Scratch work/debugging
+```{r}
+grid_size<-20
+nclusters<-3
+n1<-10
+# create clusters
+points<-make_clusters()
+# plot them
+plot_clusters(points)
+# choose the starting grid cells
+sample_tiles<-matrix(sample(1:grid_size,n1*2),ncol=2)%>%
+  as.data.frame()
+
+plot_clusters(points,samp=sample_tiles)
+
+cbind(sample_tiles,apply(sample_tiles,1,is_occupied, df=points))
+
+
+```
+
+
+```{r}
+# Example dataframe
+df <- data.frame(
+  A = c(1, 2, 3),
+  B = c(4, 5, 6),
+  C = c(7, 8, 9)
+)
+
+# Example vector to add
+addition_vector <- c(10, 20, 30)
+
+# Add the vector to every row of the dataframe
+result <- df + addition_vector
+
+# View the result
+print(result)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
