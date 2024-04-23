@@ -89,7 +89,7 @@ is_occupied<-function(tile=c(1,1),df){
 
 ### get the neighbours of a tile
 ```{r}
-get_neighbours<- function(tile=c(1,1), hard_border=TRUE,gridsize=20){
+get_neighbours<- function(tile=c(1,1), hard_border=TRUE,grid_size=20){
   # gets a list of neighbouring tiles
   neighbours<-list(c(tile[1]-1,tile[2]),
                    c(tile[1],tile[2]-1),
@@ -108,13 +108,13 @@ get_neighbours<- function(tile=c(1,1), hard_border=TRUE,gridsize=20){
 ### choose tiles for sample
 
 ```{r}
-get_tiles<-function(gridsize=20,n1=10,...){
-  # this function returns a sample of n1 tiles using a square gridsize grid
+get_tiles<-function(grid_size=20,n1=10,...){
+  # this function returns a sample of n1 tiles using a square grid_size grid
   # get a tile
-  tiles<-sample(1:gridsize^2,n1,...)
+  tiles<-sample(1:grid_size^2,n1,...)
   # convert tile numbers into X and Y
-  samp<-data.frame(X=tiles%%gridsize, Y=(tiles-1)%/%grid_size+1)
-  samp$X[samp$X==0]<-gridsize
+  samp<-data.frame(X=tiles%%grid_size, Y=(tiles-1)%/%grid_size+1)
+  samp$X[samp$X==0]<-grid_size
   samp
 }
 
@@ -169,8 +169,25 @@ plot_clusters(sample_one$points,samp=sample_one$sample_tiles)
 
 When trying to write this simulation the largest issue I ran in to was determining how to treat points that lie outside of the grid. Should they be included in the sample? should they be ignored? should I change the generating mechanism to force points to be bounded by the edges? There are lots of things you need to specify in regards to how the points are generated. This seems like it could also be an issue that comes up in practical situations as well, for example the case where you have a defined area you are allowed to collect samples from but the thing you are measuring can occur up to and outside of that area. It seems like we would be underestimating the average number in the greater population if those are excluded from the cluster since it means we are underestimating the cluster size.
 
+
+# Finding the HT and HH Estimators
+
+## Vocabulary
+ - neighborhood: the collection of units that are immediately included in the sample if a given unit is included. This relationship is symmetric and is typically (but not necessarily) geographic.
+ - Cluster: the collection of all the units that are observed under the design as a result of initial selection of unit $i$
+ - Network: selection of any unit within the network would lead to the inclusion in the sample of every other unit in the network.
+ - edge unit: any unit not satisfying the condition but in the neighborhood of one that does 
+
+## Hansen-Hurwitz
+ - Let $\Psi_k$ be the network that includes unit $k$ and $m)k$ be the number of units in that network. Any unit not satisfying the criterion is size $1$. 
+ - Let $\bar y_k^*=(m_k)^{-1}\sum_{j\in\Psi_k}y_j$ represent the average number of observations in the network that includes the $k$th unit  of the initial sample
+ - The modified Hansen-Hurwitz estimators given as $t_{HH^*}=n_1^{-1}\sum^{n_1}_{k=1}\bar y_k^*$
+
+## Hovritz-Thompson
+
+
 # Scratch work/debugging
-```{r}
+```{r eval=FALSE}
 grid_size<-20
 nclusters<-3
 n1<-10
@@ -212,6 +229,9 @@ print(result)
 
 
 
+```{r}
+getwd()
+```
 
 
 
