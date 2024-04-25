@@ -326,15 +326,21 @@ results_long<-results %>%
   pivot_longer(cols = HH:Truth,
                names_to = "Estimator", 
                values_to = "Value")
-
+# install.packages("ggridges")
 require(ggridges)
+# install.packages("colorspace")
+require(colorspace)
+
 ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
-  geom_density_ridges(alpha=0.6, stat="binline",bins=20)+
+  geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
   theme_ridges()+
-  theme(legend.position="none")+
+  theme(legend.position="none",
+        axis.title.y = element_text( hjust = 0.5),
+        axis.title.x = element_text( hjust = 0.5))+
   xlab("Estimate") +
   ylab("Frequency")+
-  ggtitle("Are adaptive cluster sampling estimators are zero-inflated?")
+  ggtitle("Are adaptive cluster sampling estimators reliable?")+
+  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))
 
 ```
 
