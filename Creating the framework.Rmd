@@ -298,7 +298,44 @@ modified_TH(sim_data)
 
 
 
+# Running simulations
+```{r eval=FALSE}
+n_sim<-1000
+results<-data.frame(HH=rep(NA,n_sim),
+                    TH=rep(NA,n_sim),
+                    Truth=rep(NA,n_sim))
+for(i in 1:n_sim){
+  sim_data<-simulate_one()
+  results$HH[i]<-modified_HH(sim_data)
+  results$TH[i]<-modified_TH(sim_data)
+  results$Truth[i]<-length(sim_data$points$X)/(sim_data$grid_size^2)
+}
+write.csv(results,file="Adaptive_Clustering_soft_border.csv")
+```
 
+## check results
+```{r}
+results<-read.csv("Adaptive_Clustering_soft_border.csv")
+head(results)
+colMeans(results[,2:4])
+```
 
+## plot simulation results
+```{r}
+results_long<-results %>% 
+  pivot_longer(cols = HH:Truth,
+               names_to = "Estimator", 
+               values_to = "Value")
+
+require(ggridges)
+ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
+  geom_density_ridges(alpha=0.6, stat="binline",bins=20)+
+  theme_ridges()+
+  theme(legend.position="none")+
+  xlab("Estimate") +
+  ylab("Frequency")+
+  ggtitle("Are adaptive cluster sampling estimators are zero-inflated?")
+
+```
 
 
