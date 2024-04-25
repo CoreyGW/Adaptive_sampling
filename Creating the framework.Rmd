@@ -49,34 +49,38 @@ make_clusters<-function(grid_size=20, nclusters=3, avg_size=20){
     map2(.y=center_dfs,~.x+.y) %>% # add the changes on to the center
     map2(.y=seq(nclusters), ~ mutate(.x, Group=paste("Cluster",.y)))%>%
     bind_rows()
+  colnames(locations)<-c("X","Y","Group")
+  locations
 }
+make_clusters()
 ```
 
 ### make clusters
 ```{r}
 plot_clusters<-function(cluster_df, grid_size=20,samp=NULL){
+  # cluster_df is the set of points on the grid
+  # samp is the set of tiles that were sampled
   # create a plot of the clusters
-  p<-ggplot(cluster_df, aes(x=X1, y=X2, color=Group))+
+  p<-ggplot(cluster_df, aes(x=X, y=Y, color=Group))+
     geom_point()+
     scale_x_continuous(breaks=seq(grid_size))+
     scale_y_continuous(breaks=seq(grid_size))+
-    coord_cartesian(xlim=c(0,grid_size), ylim=c(0,grid_size))+
-    coord_equal()
+    coord_cartesian(xlim=c(0,grid_size), ylim=c(0,grid_size))
   if(!is.null(samp)){
     # this will highlight tiles that are sampled
     # samp is the dataframe containing the coordinates for tiles
     p<-p+geom_rect(data=samp, 
-                   aes(x=X, y=Y, xmin=X-1, xmax=X, ymin=Y-1, ymax=Y),
+                   aes( xmin=X-1, xmax=X, ymin=Y-1, ymax=Y),
                    color="black",
                    fill=NA)
   }
-  p
+  plot(p)
 }
 ```
 
 ### Check whether a tile is occupied
 ```{r}
-is_occupied<-function(tile=c(1,1),df){
+is_occupied<-function(tile=c(1,1,1),df){
   # check if a tile is occupied tile location is given as c(row,column)
   # give a dataframe with coordinates of point
   # check if there are any points in xrange & yrange at the same time
@@ -86,15 +90,25 @@ is_occupied<-function(tile=c(1,1),df){
 }
 ```
 
+#### find the average in a single tile
+this will get used in the hansen hurwitz estimator as well. Just including it here so we can have y_k in the simulated data.
+```{r}
+tile_sum<-function(tile=c(X=1,Y=1,K=1), df){
+  # This function returns the y_k for tile k
+  # tile is the tile to find the response of 
+  # df is the dataframe of points on the grid
+  sum((df[,1]<tile[1]&df[,1]>tile[1]-1) & (df[,2]<tile[2] & df[,2]>tile[2]-1))
+}
+```
 
 ### get the neighbours of a tile
 ```{r}
-get_neighbours<- function(tile=c(1,1), hard_border=TRUE,grid_size=20){
+get_neighbours<- function(tile=c(X=1,Y=1,k=1), hard_border=TRUE,grid_size=20){
   # gets a list of neighbouring tiles
-  neighbours<-list(c(tile[1]-1,tile[2]),
-                   c(tile[1],tile[2]-1),
-                   c(tile[1]+1,tile[2]),
-                   c(tile[1],tile[2]+1))
+  neighbours<-list(c(tile[1]-1, tile[2],   tile[3]),
+                   c(tile[1],   tile[2]-1, tile[3]),
+                   c(tile[1]+1, tile[2],   tile[3]),
+                   c(tile[1],   tile[2]+1, tile[3]))
   if(hard_border){
     # do we want to include neighbours outside of the grid?
     # returns the neighbours that are only within the border
@@ -115,6 +129,7 @@ get_tiles<-function(grid_size=20,n1=10,...){
   # convert tile numbers into X and Y
   samp<-data.frame(X=tiles%%grid_size, Y=(tiles-1)%/%grid_size+1)
   samp$X[samp$X==0]<-grid_size
+  samp$k<-1:n1
   samp
 }
 
@@ -122,15 +137,15 @@ get_tiles<-function(grid_size=20,n1=10,...){
 
 ### perform the simulation
 ```{r}
-simulate_one<-function(nclusters=3, grid_size=20,... ){
+simulate_one<-function(nclusters=3, grid_size=20,n1=10,... ){
   # generate clusters
   points<-make_clusters()
   # choose the starting grid cells
-  sample_tiles<-get_tiles(...)
+  sample_tiles<-get_tiles(n1=10,...)
   # save a copy to check against for updates
   temp<-sample_tiles
   # check whether or not they are occupied based on the clusters
-  occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
+  occupied<-apply(sample_tiles,1,function(x) is_occupied(x, points))
   # find the neighbours of the occupied points
   neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
     bind_rows() %>% # turn list of neighbours into tibble
@@ -154,14 +169,31 @@ simulate_one<-function(nclusters=3, grid_size=20,... ){
       bind_rows(neighbours) %>%
       unique()
   }
-  return(list(sample_tiles=cbind(sample_tiles,occupied),points=points))
+  
+  # get the values of the response for each unit in the sample
+  sample_tiles$y_k<-apply(sample_tiles,1,function(x) tile_sum(x, points))
+  # get the number of units in each network m_k and add occupied to sample_tiles
+  sample_tiles<-sample_tiles%>%
+    cbind(occupied)%>%
+    group_by(k)%>%
+    mutate(m_k=sum(occupied))
+  # minimum for m_k is 1 not 0, set all 0s to 1
+  sample_tiles$m_k[sample_tiles$m_k==0]<-1
+  
+  return(list(sample_tiles=sample_tiles,
+              points=points,
+              nclusters=nclusters,
+              grid_size=grid_size,
+              n1=n1))
 }
 
-
+set.seed(pi)
+sim_data<-simulate_one()
 ```
 
 ## Demonstrating the function works to generate a sample
 ```{r}
+set.seed(pi)
 sample_one<-simulate_one(n1=10,nclusters=3, grid_size=20)
 plot_clusters(sample_one$points,samp=sample_one$sample_tiles)
 ```
@@ -179,61 +211,90 @@ When trying to write this simulation the largest issue I ran in to was determini
  - edge unit: any unit not satisfying the condition but in the neighborhood of one that does 
 
 ## Hansen-Hurwitz
- - Let $\Psi_k$ be the network that includes unit $k$ and $m)k$ be the number of units in that network. Any unit not satisfying the criterion is size $1$. 
+ - Let $\Psi_k$ be the network that includes unit $k$ and $m_k$ be the number of units in that network. Any unit not satisfying the criterion is size $1$. 
  - Let $\bar y_k^*=(m_k)^{-1}\sum_{j\in\Psi_k}y_j$ represent the average number of observations in the network that includes the $k$th unit  of the initial sample
  - The modified Hansen-Hurwitz estimators given as $t_{HH^*}=n_1^{-1}\sum^{n_1}_{k=1}\bar y_k^*$
+ 
+### Steps
+- Find average number of response in each network
+  - file the average number of the response in a single tile.
+- compute estimator using the averages
+
+
+
+
+
+#### Applying the function to a single sample
+```{r}
+modified_HH<-function(sim_data,plot=F,n1=10,...){
+  # Find the hansen hurwitz estimator of a sample called sim_data
+  if(plot==T){ # plot sample
+    plot_clusters(sim_data$points,samp=sim_data$sample_tiles)
+  }
+  
+  # sample_one$points and sample_one$sample_tiles
+  # get the response values for each tile sampled
+  y_k<-sim_data$sample_tiles$y_k
+  # find the sum of each network that a unit belongs to this returns
+  # k and the mean
+  temp<-data.frame(y_k,group=sim_data$sample_tiles$k) %>%
+    group_by(group)%>%
+    filter(y_k>0) %>%
+    summarize(network_means=mean(y_k))
+  
+  means<-data.frame(init_sample=1:n1,network_means=rep(0,n1))
+  means[temp$group,2]<-temp$network_means
+  mean(means$network_means)
+}
+
+modified_HH(sim_data,plot=T)
+```
+
 
 ## Hovritz-Thompson
+The classic Horvitz-Thompson estimator is given by dividing each y-value by the associated inclusion probability and is an unbiased estimator of the population mean. This is not viable in adaptive cluster sampling as the inclusion probabilities for all units are not known. None-the-less we can still create an unbiased estimator by modifying the Horvitz-Thompson estimator. First we define
+$$\alpha^*_k=1-{N-m_k\choose n_1}/{N\choose n_1}$$
+Where $m_k$ is the number of units in the network that includes unit $k$, $N$ is the number of units in the population, and $n_1$ is the number of units in the initial sample. Next let 
+$$J_k=\begin{cases}0& \text{If the condition is not satisfied} \\ 1 & \text{Otherwise}\end{cases}$$ 
+Then the modified estimator is given by 
+$$t_{{HT}^*}=N^{-1}\sum^v_{k=1}y_kJ_k/\alpha^*_k$$ 
+where $v$ is the number of distinct units in the sample
 
-
-# Scratch work/debugging
-```{r eval=FALSE}
-grid_size<-20
-nclusters<-3
-n1<-10
-# create clusters
-points<-make_clusters()
-# plot them
-plot_clusters(points)
-# choose the starting grid cells
-sample_tiles<-matrix(sample(1:grid_size,n1*2),ncol=2)%>%
-  as.data.frame()
-
-plot_clusters(points,samp=sample_tiles)
-
-cbind(sample_tiles,apply(sample_tiles,1,is_occupied, df=points))
-
-
-```
-
-
+### Steps
+ - Find $\alpha^*_k$ for each unit in the sample
+ - Find $y_kJ_k/\alpha^*_k$ for each unit
+ - Find $t_{HT^*}$
+ 
+#### $\alpha^*_k$
+$$\alpha^*_k=1-{N-m_k\choose n_1}/{N\choose n_1}$$
 ```{r}
-# Example dataframe
-df <- data.frame(
-  A = c(1, 2, 3),
-  B = c(4, 5, 6),
-  C = c(7, 8, 9)
-)
-
-# Example vector to add
-addition_vector <- c(10, 20, 30)
-
-# Add the vector to every row of the dataframe
-result <- df + addition_vector
-
-# View the result
-print(result)
-
+alpha_k<-function(sim_data){
+  # get the response values for each tile sampled
+  y_k<-sim_data$sample_tiles$y_k
+  n1<-sim_data$n1
+  N<-sim_data$grid_size^2
+  1-choose(N-sim_data$sample_tiles$m_k, sim_data$n1)/choose(N,sim_data$n1)
+}
+alpha_k(sim_data)
 ```
 
 
-
-
+#### Finding the estimator
+$$t_{{HT}^*}=N^{-1}\sum^v_{k=1}y_kJ_k/\alpha^*_k$$ 
 ```{r}
-getwd()
+modified_TH<-function(sim_data,plot=F){
+  if(plot==T){
+    plot_clusters(sim_data$points,samp=sim_data$sample_tiles)
+  }
+  a_k<-alpha_k(sim_data)
+  N<-sim_data$grid_size^2
+  y_k<-sim_data$sample_tiles$y_k
+  J_k<-sim_data$sample_tiles$occupied
+  1/N*sum(y_k*J_k/a_k)
+}
+
+modified_TH(sim_data)
 ```
-
-
 
 
 
