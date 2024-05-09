@@ -34,7 +34,7 @@ require(tidyverse)
 
 ### make clusters
 ```{r}
-make_clusters<-function(grid_size=20, nclusters=3, avg_size=20){
+make_clusters<-function(grid_size=20, nclusters=3, avg_size=20, force_inclusion=FALSE){
   # create a list of clusters.
   centers<-split(runif(nclusters*2,0,grid_size),seq(nclusters))
   # get the three cluster sizes
@@ -43,13 +43,33 @@ make_clusters<-function(grid_size=20, nclusters=3, avg_size=20){
   center_dfs<-map2(sizes,centers,
                    ~ kronecker(matrix(rep(1,.x),ncol=1), matrix(.y,ncol=2)))
                               # I actually used the kronecker product holy crap!
-  # get coordinates of locations
-  locations<-sizes %>% # use sizes
-    map(~data.frame(matrix(rnorm(.x*2),ncol=2))) %>% # make list of df of changes from centers
-    map2(.y=center_dfs,~.x+.y) %>% # add the changes on to the center
-    map2(.y=seq(nclusters), ~ mutate(.x, Group=paste("Cluster",.y)))%>%
-    bind_rows()
-  colnames(locations)<-c("X","Y","Group")
+  
+  if(force_inclusion==T){
+    # get coordinates of locations
+    locations<-sizes %>% # use sizes
+      map( ~data.frame(matrix(rnorm(.x*2),ncol=2))) %>% # make list of df of changes from centers
+      map2(.y=center_dfs, ~.x+.y) %>% # add the changes on to the center
+      map2(.y=seq(nclusters), ~ mutate(.x, Group=paste("Cluster",.y)))%>%
+      bind_rows()
+    colnames(locations)<-c("X","Y","Group")
+    # force points to snap inside if they were generated outside. This means some
+    # tiles will be more densely clustered at edges when a center is near an edge
+    # should help maintain the average number of points though
+    locations<-locations%>%
+      mutate(X=ifelse(X>grid_size,grid_size,X))%>%
+      mutate(X=ifelse(X<0, 0, X))%>%
+      mutate(X=ifelse(Y>grid_size,grid_size,Y))%>%
+      mutate(X=ifelse(Y<0, 0, Y))
+      
+  }else{
+    # get coordinates of locations
+    locations<-sizes %>% # use sizes
+      map(~data.frame(matrix(rnorm(.x*2),ncol=2))) %>% # make list of df of changes from centers
+      map2(.y=center_dfs,~.x+.y) %>% # add the changes on to the center
+      map2(.y=seq(nclusters), ~ mutate(.x, Group=paste("Cluster",.y)))%>%
+      bind_rows()
+    colnames(locations)<-c("X","Y","Group")
+  }
   locations
 }
 make_clusters()
@@ -135,7 +155,9 @@ get_tiles<-function(grid_size=20,n1=10,...){
 
 ```
 
-### perform the simulation
+### Performing adaptive cluster sampling
+
+#### One sample from a population of points
 ```{r}
 simulate_one<-function(nclusters=3, grid_size=20,n1=10,... ){
   # generate clusters
@@ -197,6 +219,70 @@ set.seed(pi)
 sample_one<-simulate_one(n1=10,nclusters=3, grid_size=20)
 plot_clusters(sample_one$points,samp=sample_one$sample_tiles)
 ```
+
+#### Multiple samples from the same population of points
+Goals:
+- take m samples from a population
+- return output in the same format as `simulate_one` but since there are m samples there will be a list of lists
+```{r}
+# m numer of samples from the same population
+simulate_m<-function(m=10,nclusters=3, grid_size=20,n1=10,... ){
+  results<-list()
+  # generate clusters
+  points<-make_clusters()
+  for(i in 1:m){ # loop for the m samples
+    # this is just the code from simulate_one() see that for more comments
+    sample_tiles<-get_tiles(n1=10,...)
+    temp<-sample_tiles
+    occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
+    
+    neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
+      bind_rows() %>% 
+      as.data.frame() 
+    
+    sample_tiles<-rbind(sample_tiles,neighbours) %>%
+      unique()
+     # keep looping until sample_tiles does not grow
+    while(dim(temp)[1]!=dim(sample_tiles)[1]){ 
+      # save a copy to check against for updates
+      temp<-sample_tiles
+      # check whether or not they are occupied based on the clusters
+      occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
+      # find the neighbours of the occupied points
+      neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
+        bind_rows() %>% # turn list of neighbours into tibble
+        as.data.frame() # into dataframe
+      # update sample tiles to include neighbours
+      sample_tiles<-sample_tiles %>%
+        bind_rows(neighbours) %>%
+        unique()
+    }
+    
+    # get the values of the response for each unit in the sample
+    sample_tiles$y_k<-apply(sample_tiles,1,function(x) tile_sum(x, points))
+    # get the number of units in each network m_k and add occupied to sample_tiles
+    sample_tiles<-sample_tiles%>%
+      cbind(occupied)%>%
+      group_by(k)%>%
+      mutate(m_k=sum(occupied))
+    # minimum for m_k is 1 not 0, set all 0s to 1
+    sample_tiles$m_k[sample_tiles$m_k==0]<-1
+    
+    results[[i]]<-list(sample_tiles=sample_tiles,
+                                  points=points,
+                                  nclusters=nclusters,
+                                  grid_size=grid_size,
+                                  n1=n1)
+  }
+  return(results)
+}
+
+set.seed(pi)
+sim_data_m<-simulate_m()
+```
+
+
+
 
 
 When trying to write this simulation the largest issue I ran in to was determining how to treat points that lie outside of the grid. Should they be included in the sample? should they be ignored? should I change the generating mechanism to force points to be bounded by the edges? There are lots of things you need to specify in regards to how the points are generated. This seems like it could also be an issue that comes up in practical situations as well, for example the case where you have a defined area you are allowed to collect samples from but the thing you are measuring can occur up to and outside of that area. It seems like we would be underestimating the average number in the greater population if those are excluded from the cluster since it means we are underestimating the cluster size.
@@ -299,6 +385,10 @@ modified_TH(sim_data)
 
 
 # Running simulations
+
+## simulations with a soft border
+
+### each sample is from a different population
 ```{r eval=FALSE}
 n_sim<-1000
 results<-data.frame(HH=rep(NA,n_sim),
@@ -313,15 +403,10 @@ for(i in 1:n_sim){
 write.csv(results,file="Adaptive_Clustering_soft_border.csv")
 ```
 
-## check results
+
+### plot simulation results
 ```{r}
 results<-read.csv("Adaptive_Clustering_soft_border.csv")
-head(results)
-colMeans(results[,2:4])
-```
-
-## plot simulation results
-```{r}
 results_long<-results %>% 
   pivot_longer(cols = HH:Truth,
                names_to = "Estimator", 
@@ -343,5 +428,100 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   scale_fill_manual(values=c("lightblue3","lightblue3","red3"))
 
 ```
+
+### 1000 samples from the same population for 9 different populations
+```{r eval=FALSE}
+set.seed(pi)
+n_samples<-1000
+n_pops<-9
+results<-data.frame(HH=rep(NA,n_pops*n_samples),
+                    TH=rep(NA,n_pops*n_samples),
+                    Truth=rep(NA,n_pops*n_samples),
+                    Population=rep(NA,n_pops*n_samples))
+population_points<-data.frame(X=c(),Y=c(),Group=c(),Population=c())
+for(i in 1:n_pops){
+  sim_data<-simulate_m(m=n_samples)
+  # save the population points to plot later
+  population_points<-population_points%>%
+    rbind( cbind(sim_data[[i]]$points,Population=paste("pop",i)) )
+  for(j in 1:n_samples){
+    results$HH[(i-1)*n_samples+j]<-modified_HH(sim_data[[j]])
+    results$TH[(i-1)*n_samples+j]<-modified_TH(sim_data[[j]])
+    results$Truth[(i-1)*n_samples+j]<-length(sim_data[[j]]$points$X)/(sim_data[[j]]$grid_size^2)
+    results$Population[(i-1)*n_samples+j]<-paste("Population",i)
+  }
+}
+population_points
+write.csv(results,file="sampling_same_pop.csv")
+write.csv(population_points,file="points_for_populations.csv")
+```
+
+#### load in simulation results
+```{r}
+population_points<-read_csv("points_for_populations.csv")
+results<-read_csv("sampling_same_pop.csv")
+results_long<-results%>%
+  pivot_longer(cols = HH:Truth,
+               names_to = "Estimator", 
+               values_to = "Value")
+
+ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
+  geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
+  theme_ridges()+
+  theme(legend.position="none",
+        axis.title.y = element_text( hjust = 0.5),
+        axis.title.x = element_text( hjust = 0.5))+
+  xlab("Estimate") +
+  ylab("Frequency")+
+  ggtitle("Are adaptive cluster sampling estimators reliable?")+
+  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
+  facet_wrap(~Population)
+
+ggplot(population_points,aes(x=X,y=Y,color=Group))+
+  geom_point()+
+  facet_wrap(~Population)+
+  xlim(0,20)+ylim(0,20)+
+  ggtitle("How do these estimators vary across populations?")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
