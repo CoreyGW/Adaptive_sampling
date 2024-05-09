@@ -488,7 +488,6 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
   facet_wrap(~Population)+
-  xlim(0,20)+ylim(0,20)+
   ggtitle("How do these estimators vary across populations?",
           subtitle="Inclusion not forced, hard border finding neighbours")
 ```
@@ -543,16 +542,15 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   xlab("Estimate") +
   ylab("Frequency")+
   ggtitle("Are adaptive cluster sampling estimators reliable?",
-          subtitle="Inclusion not forced, hard border finding neighbours")+
+          subtitle="Inclusion not forced, soft border finding neighbours")+
   scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
   facet_wrap(~Population)
 
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
   facet_wrap(~Population)+
-  xlim(0,20)+ylim(0,20)+
   ggtitle("How do these estimators vary across populations?",
-          subtitle="Inclusion not forced, hard border finding neighbours")
+          subtitle="Inclusion not forced, soft border finding neighbours")
 ```
 
 
