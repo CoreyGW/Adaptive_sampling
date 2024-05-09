@@ -2,7 +2,7 @@
 title: "Adaptive Sampling simulations"
 author: "Corey Williams"
 date: "`r Sys.Date()`"
-output: html_document
+output: html_notebook
 ---
 
 # Motivation for adaptive sampling
@@ -161,7 +161,7 @@ get_tiles<-function(grid_size=20,n1=10,...){
 ```{r}
 simulate_one<-function(nclusters=3, grid_size=20,n1=10,... ){
   # generate clusters
-  points<-make_clusters()
+  points<-make_clusters(...)
   # choose the starting grid cells
   sample_tiles<-get_tiles(n1=10,...)
   # save a copy to check against for updates
@@ -213,7 +213,7 @@ set.seed(pi)
 sim_data<-simulate_one()
 ```
 
-## Demonstrating the function works to generate a sample
+#### Demonstrating the function works to generate a sample
 ```{r}
 set.seed(pi)
 sample_one<-simulate_one(n1=10,nclusters=3, grid_size=20)
@@ -229,14 +229,14 @@ Goals:
 simulate_m<-function(m=10,nclusters=3, grid_size=20,n1=10,... ){
   results<-list()
   # generate clusters
-  points<-make_clusters()
+  points<-make_clusters(...)
   for(i in 1:m){ # loop for the m samples
     # this is just the code from simulate_one() see that for more comments
     sample_tiles<-get_tiles(n1=10,...)
     temp<-sample_tiles
     occupied<-apply(sample_tiles,1,function(x) is_occupied(x,points))
     
-    neighbours<-apply(sample_tiles[occupied,], 1, get_neighbours)%>% # get neighbours
+    neighbours<-apply(sample_tiles[occupied,], 1, function(x) get_neighbours(x,...))%>% # get neighbours
       bind_rows() %>% 
       as.data.frame() 
     
@@ -386,7 +386,7 @@ modified_TH(sim_data)
 
 # Running simulations
 
-## simulations with a soft border
+## Simulations with a soft border
 
 ### each sample is from a different population
 ```{r eval=FALSE}
@@ -406,7 +406,7 @@ write.csv(results,file="Adaptive_Clustering_soft_border.csv")
 
 ### plot simulation results
 ```{r}
-results<-read.csv("Adaptive_Clustering_soft_border.csv")
+results<-read.csv("Adaptive_Clustering_soft_border.csv",show_col_types = FALSE)
 results_long<-results %>% 
   pivot_longer(cols = HH:Truth,
                names_to = "Estimator", 
@@ -458,8 +458,8 @@ write.csv(population_points,file="points_for_populations.csv")
 
 #### load in simulation results
 ```{r}
-population_points<-read_csv("points_for_populations.csv")
-results<-read_csv("sampling_same_pop.csv")
+population_points<-read_csv("points_for_populations.csv",show_col_types = FALSE)
+results<-read_csv("sampling_same_pop.csv",show_col_types = FALSE)
 results_long<-results%>%
   pivot_longer(cols = HH:Truth,
                names_to = "Estimator", 
@@ -525,3 +525,61 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
 
 
 
+
+## Simulation with forced inclusion
+### Inclusion forced in point generation
+### only consider points INSIDE the grid
+### 1000 samples from the same population for 9 different populations
+```{r eval=FALSE}
+set.seed(pi)
+n_samples<-1000
+n_pops<-9
+results<-data.frame(HH=rep(NA,n_pops*n_samples),
+                    TH=rep(NA,n_pops*n_samples),
+                    Truth=rep(NA,n_pops*n_samples),
+                    Population=rep(NA,n_pops*n_samples))
+population_points<-data.frame(X=c(),Y=c(),Group=c(),Population=c())
+for(i in 1:n_pops){
+  sim_data<-simulate_m(m=n_samples)
+  # save the population points to plot later
+  population_points<-population_points%>%
+    rbind( cbind(sim_data[[i]]$points,Population=paste("pop",i)) )
+  for(j in 1:n_samples){
+    results$HH[(i-1)*n_samples+j]<-modified_HH(sim_data[[j]])
+    results$TH[(i-1)*n_samples+j]<-modified_TH(sim_data[[j]])
+    results$Truth[(i-1)*n_samples+j]<-length(sim_data[[j]]$points$X)/(sim_data[[j]]$grid_size^2)
+    results$Population[(i-1)*n_samples+j]<-paste("Population",i)
+  }
+}
+population_points
+write.csv(results,file="sampling_same_pop.csv")
+write.csv(population_points,file="points_for_populations.csv")
+```
+
+#### load in simulation results
+```{r}
+population_points<-read_csv("points_for_populations.csv",show_col_types = FALSE)
+results<-read_csv("sampling_same_pop.csv",show_col_types = FALSE)
+results_long<-results%>%
+  pivot_longer(cols = HH:Truth,
+               names_to = "Estimator", 
+               values_to = "Value")
+
+ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
+  geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
+  theme_ridges()+
+  theme(legend.position="none",
+        axis.title.y = element_text( hjust = 0.5),
+        axis.title.x = element_text( hjust = 0.5))+
+  xlab("Estimate") +
+  ylab("Frequency")+
+  ggtitle("Are adaptive cluster sampling estimators reliable?")+
+  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
+  facet_wrap(~Population)
+
+ggplot(population_points,aes(x=X,y=Y,color=Group))+
+  geom_point()+
+  facet_wrap(~Population)+
+  xlim(0,20)+ylim(0,20)+
+  ggtitle("How do these estimators vary across populations?")
+```
