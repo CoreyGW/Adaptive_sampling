@@ -2,7 +2,10 @@
 title: "Adaptive Sampling simulations"
 author: "Corey Williams"
 date: "`r Sys.Date()`"
-output: html_notebook
+output:
+  html_document:
+    toc: true
+    df_print: paged
 ---
 
 # Motivation for adaptive sampling
@@ -424,9 +427,10 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ggtitle("Are adaptive cluster sampling estimators reliable?")+
   scale_fill_manual(values=c("lightblue3","lightblue3","red3"))
 ```
-## Simulations with a hard border
-### Inclusion not forced
-#### Hard border when finding neighbours
+
+## Inclusion not forced
+
+### Hard border when finding neighbours
 ```{r eval=FALSE}
 set.seed(pi)
 n_samples<-1000
@@ -490,7 +494,7 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
 ```
 
 
-#### Soft border when finding neighbours
+### Soft border when finding neighbours
 ```{r eval=FALSE}
 set.seed(pi)
 n_samples<-1000
@@ -538,7 +542,8 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
         axis.title.x = element_text( hjust = 0.5))+
   xlab("Estimate") +
   ylab("Frequency")+
-  ggtitle("Are adaptive cluster sampling estimators reliable?")+
+  ggtitle("Are adaptive cluster sampling estimators reliable?",
+          subtitle="Inclusion not forced, hard border finding neighbours")+
   scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
   facet_wrap(~Population)
 
@@ -546,12 +551,14 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
   facet_wrap(~Population)+
   xlim(0,20)+ylim(0,20)+
-  ggtitle("How do these estimators vary across populations?")
+  ggtitle("How do these estimators vary across populations?",
+          subtitle="Inclusion not forced, hard border finding neighbours")
 ```
 
 
-### Simulation with forced inclusion
-#### Hard border when finding neighbours
+## Inclusion forced
+
+### Hard border when finding neighbours
 ```{r eval=FALSE}
 set.seed(pi)
 n_samples<-1000
@@ -614,7 +621,7 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
           subtitle="Inclusion forced, hard border finding neighbours")
 ```
 
-#### Soft border when finding neighbours
+### Soft border when finding neighbours
 ```{r eval=FALSE}
 set.seed(pi)
 n_samples<-1000
