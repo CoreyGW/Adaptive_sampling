@@ -81,7 +81,7 @@ make_clusters<-function(grid_size=20, nclusters=3, avg_size=20, force_inclusion=
   }
   locations
 }
-make_clusters(force_inclusion = TRUE)
+head(make_clusters(force_inclusion = TRUE))
 ```
 
 ### plotting
@@ -429,6 +429,96 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ggtitle("Are adaptive cluster sampling estimators reliable?")+
   scale_fill_manual(values=c("lightblue3","lightblue3","red3"))
 ```
+## exploring combinations of inclusion and border type
+Below are simulations for all four combinations of border type and inclusion type for 9 populations. There are 4 loops for simulations, one for inclusion type, one for border type, one for the 9 populations, and one to compute the estimators of the 1000 samples for the 9 populations.
+```{r eval=FALSE}
+m_samples<-1000 #
+n_pops<-9
+border_type<-c(FALSE,TRUE) # h
+border_label<-c("hard","soft")
+inclusion_type<-c(FALSE,TRUE) # k
+inclusion_label<-c("not_","")
+
+for(h in 1:length(border_type)){
+  for(k in 1:length(inclusion_type)){
+    # Create blank dataframes for the estimates and the populations of points
+    results<-data.frame(HH=rep(NA,n_pops*m_samples),
+                        TH=rep(NA,n_pops*m_samples),
+                        Truth=rep(NA,n_pops*m_samples),
+                        Population=rep(NA,n_pops*m_samples))
+    
+    population_points<-data.frame(X=c(),Y=c(),Group=c(),Population=c())
+    # set seed to ensure each set of populations are the same
+    set.seed(pi)
+    
+    for(i in 1:n_pops){
+      sim_data<-simulate_m(m=m_samples,
+                           hard_border = border_type[h], 
+                           force_inclusion = inclusion_type[k])
+      # save the population points to plot later
+      population_points<-population_points%>%
+        rbind( cbind(sim_data[[i]]$points,Population=paste("pop",i)) )
+      for(j in 1:m_samples){ 
+        # for each sample from the population in sim_data we compute our estimator
+        # saving estimators into results
+        results$HH[(i-1)*m_samples+j]<-modified_HH(sim_data[[j]])
+        results$TH[(i-1)*m_samples+j]<-modified_TH(sim_data[[j]])
+        results$Truth[(i-1)*m_samples+j]<-length(sim_data[[j]]$points$X)/(sim_data[[j]]$grid_size^2)
+        results$Population[(i-1)*m_samples+j]<-paste("Population",i)
+      }
+    }
+    
+    # save end results of simulation
+    write.csv(results,file=paste("estimates-inclusion_",
+                                 inclusion_label[k],
+                                 "forced-",
+                                 border_label[h], "_border.csv",
+                                 sep=""))
+    write.csv(population_points,file=paste("pop_points-inclusion_",
+                                           inclusion_label[k],
+                                           "forced-",
+                                           border_label[h],
+                                           "_border.csv",sep=""))
+
+  }
+}
+
+```
+
+## plotting simulation results and populations
+```{r}
+for(i in c("soft","hard")){
+  for(j in c("_not","")){
+    # read in results from simulation above
+    results<-read_csv(paste("estimates-inclusion",j,"_forced-",i,"_border.csv",sep=""),
+                      show_col_types = FALSE,
+                      col_select = HH:Population)
+    results_long<-results%>%
+      pivot_longer(cols = HH:TH,
+                   names_to = "Estimator", 
+                   values_to = "Value")
+        # plot the distributions of the estimators across the 9 populations
+    p<-ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
+      geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
+      theme_ridges()+
+      theme(legend.position="none",
+            axis.title.y = element_text( hjust = 0.5),
+            axis.title.x = element_text( hjust = 0.5))+
+      xlab("Estimate") +
+      ylab("Frequency")+
+      ggtitle("Are adaptive cluster sampling estimators reliable?",
+              subtitle=paste("Inclusion",gsub("_","",j),"forced,", i,"border finding neighbours"))+
+      scale_fill_manual(values=c("lightblue3","lightblue3"))+
+      facet_wrap(~Population)+
+      geom_vline(aes(xintercept=Truth),color="red3")
+    plot(p)
+  }
+}
+
+for(i in c("_not","")){
+  
+}
+```
 
 ## Inclusion not forced
 
@@ -693,36 +783,7 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
 ```
 
 
-```{r}
-for(i in c("soft","hard")){
-  for(j in c("_not","")){
-    # read in results from simulation above
-    results<-read_csv(paste("estimates-inclusion",j,"_forced-",i,"_border.csv",sep=""),
-                      show_col_types = FALSE,
-                      col_select = HH:Population)
-    results_long<-results%>%
-      pivot_longer(cols = HH:TH,
-                   names_to = "Estimator", 
-                   values_to = "Value")
-        # plot the distributions of the estimators across the 9 populations
-    p<-ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
-      geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
-      theme_ridges()+
-      theme(legend.position="none",
-            axis.title.y = element_text( hjust = 0.5),
-            axis.title.x = element_text( hjust = 0.5))+
-      xlab("Estimate") +
-      ylab("Frequency")+
-      ggtitle("Are adaptive cluster sampling estimators reliable?",
-              subtitle=paste("Inclusion",j,"forced,", i,"border finding neighbours"))+
-      scale_fill_manual(values=c("lightblue3","lightblue3"))+
-      facet_wrap(~Population)+
-      geom_vline(aes(xintercept=Truth),color="red3")
-    plot(p)
-  }
-}
-
-```
+## exploring population 7
 ```{r}
 results<-read_csv("estimates-inclusion_not_forced-soft_border.csv",
                       show_col_types = FALSE,
