@@ -1,6 +1,8 @@
 ---
 title: "Adaptive Sampling simulations"
 author: "Corey Williams"
+header-includes:
+   - \usepackage{amsmath}
 date: "`r Sys.Date()`"
 output:
   pdf_document:
@@ -34,11 +36,11 @@ Goals:
 # Creating functions for sampling
 
 ```{r}
-require(tidyverse)
+require(tidyverse) # for plotting, dply data manipulation, and maps from purrr
 # install.packages("ggridges")
-require(ggridges)
+require(ggridges) # creating nice plots of simulation results
 # install.packages("colorspace")
-require(colorspace)
+# require(colorspace)
 ```
 
 ### make clusters
@@ -516,7 +518,21 @@ for(i in c("soft","hard")){
 }
 
 for(i in c("_not","")){
+  population_points<-read_csv(paste("pop_points-inclusion",i,"_forced-soft_border.csv",sep=""),
+                      show_col_types = FALSE)
+  # plot the 9 populations
+  p<-ggplot(population_points,aes(x=X,y=Y,color=Group))+
+    geom_point()+
+    facet_wrap(~Population)+
+    ggtitle("How do these estimators vary across populations?",
+            subtitle=paste("Inclusion",gsub("_","",i),"forced"))+
+    scale_x_continuous(breaks = seq(1, 20, 1)) +
+    scale_y_continuous(breaks = seq(1, 20, 1))+
+    geom_hline(yintercept=c(0,20))+
+    geom_vline(xintercept=c(0,20))+
+    guides(color="none")
   
+  plot(p)
 }
 ```
 
@@ -796,4 +812,51 @@ results_pop7<-results%>%
   filter(Population=="Population 7")
 dim(table(results_pop7$HH))
 ```
+
+# Sample size exploration
+The probability that at least one unit in the initial sample is occupied is 
+$$\begin{aligned}P(\text{at least 1})&=1-P(\text{none})\\
+&=1-\frac{{N-O\choose n_1}}{{N\choose n_1}}\\ 
+&=1-\frac{(N-O)!/[(N-O-n_1)!n_1!]}{N!/[(N-n_1)!n_1!]}\\
+&=1-\frac{(N-O)!(N-n_1)!}{N!(N-O-n_1)!}\end{aligned}\\
+&=1-\Prod\frac{N-O-i}{N-i}$$
+We can view this as a function of our sample size for a given population with $O$ units occupied
+
+```{r}
+N<-400
+Os<-seq(0:400)
+n_1s<-seq(0:400)
+Prob<-function(params=c(O,n_1,N)){
+  O<-params[1]
+  n_1<-params[2]
+  N<-params[3]
+  1-prod((N-O-n_1):(N-O)/((N-n_1):N))
+}
+
+Prob(params=c(2,1,400))
+
+plot_df<-expand.grid(O=Os,n_1=n_1s)%>%
+  cbind(N)%>%
+  filter(O>n_1)
+
+plot_df$P<-plot_dfapply(plot_df,1,Prob)
+
+head(plot_df)
+
+ggplot(plot_df)+
+  geom_tile(aes(x=n_1,y=O,fill=P))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
