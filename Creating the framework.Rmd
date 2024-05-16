@@ -3,6 +3,8 @@ title: "Adaptive Sampling simulations"
 author: "Corey Williams"
 date: "`r Sys.Date()`"
 output:
+  pdf_document:
+    toc: true
   html_document:
     toc: true
     df_print: paged
@@ -33,6 +35,10 @@ Goals:
 
 ```{r}
 require(tidyverse)
+# install.packages("ggridges")
+require(ggridges)
+# install.packages("colorspace")
+require(colorspace)
 ```
 
 ### make clusters
@@ -411,10 +417,6 @@ results_long<-results %>%
   pivot_longer(cols = HH:Truth,
                names_to = "Estimator", 
                values_to = "Value")
-# install.packages("ggridges")
-require(ggridges)
-# install.packages("colorspace")
-require(colorspace)
 
 ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
@@ -466,11 +468,12 @@ write.csv(population_points,file="pop_points-inclusion_not_forced-hard_border.cs
 # read in results from simulation above
 results<-read_csv("estimates-inclusion_not_forced-hard_border.csv",show_col_types = FALSE)
 results_long<-results%>%
-  pivot_longer(cols = HH:Truth,
+  pivot_longer(cols = HH:TH,
                names_to = "Estimator", 
                values_to = "Value")
 
 population_points<-read_csv("pop_points-inclusion_not_forced-hard_border.csv",show_col_types = FALSE)
+
 # plot the distributions of the estimators across the 9 populations
 ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
@@ -482,8 +485,10 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ylab("Frequency")+
   ggtitle("Are adaptive cluster sampling estimators reliable?",
           subtitle="Inclusion not forced, hard border finding neighbours")+
-  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
-  facet_wrap(~Population)
+  scale_fill_manual(values=c("lightblue3","lightblue3"))+
+  facet_wrap(~Population)+
+  geom_vline(aes(xintercept=Truth),color="red3")
+
 # plot the 9 populations
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
@@ -527,7 +532,7 @@ write.csv(population_points,file="pop_points-inclusion_not_forced-soft_border.cs
 ```{r}
 results<-read_csv("estimates-inclusion_not_forced-soft_border.csv",show_col_types = FALSE)
 results_long<-results%>%
-  pivot_longer(cols = HH:Truth,
+  pivot_longer(cols = HH:TH,
                names_to = "Estimator", 
                values_to = "Value")
 
@@ -543,8 +548,9 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ylab("Frequency")+
   ggtitle("Are adaptive cluster sampling estimators reliable?",
           subtitle="Inclusion not forced, soft border finding neighbours")+
-  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
-  facet_wrap(~Population)
+  scale_fill_manual(values=c("lightblue3","lightblue3"))+
+  facet_wrap(~Population)+
+  geom_vline(aes(xintercept=Truth),color="red3")
 
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
@@ -592,7 +598,7 @@ write.csv(population_points,file="pop_points-inclusion_forced-hard_border.csv")
 # read in results from simulation above
 results<-read_csv("estimates-inclusion_forced-hard_border.csv",show_col_types = FALSE)
 results_long<-results%>%
-  pivot_longer(cols = HH:Truth,
+  pivot_longer(cols = HH:TH,
                names_to = "Estimator", 
                values_to = "Value")
 
@@ -608,8 +614,10 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ylab("Frequency")+
   ggtitle("Are adaptive cluster sampling estimators reliable?",
           subtitle="Inclusion forced, hard border finding neighbours")+
-  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
-  facet_wrap(~Population)
+  scale_fill_manual(values=c("lightblue3","lightblue3"))+
+  facet_wrap(~Population)+
+  geom_vline(aes(xintercept=Truth),color="red3")
+
 # plot the 9 populations
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
@@ -655,7 +663,7 @@ write.csv(population_points,file="pop_points-inclusion_forced-soft_border.csv")
 # read in results from simulation above
 results<-read_csv("estimates-inclusion_forced-soft_border.csv",show_col_types = FALSE)
 results_long<-results%>%
-  pivot_longer(cols = HH:Truth,
+  pivot_longer(cols = HH:TH,
                names_to = "Estimator", 
                values_to = "Value")
 
@@ -671,8 +679,10 @@ ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
   ylab("Frequency")+
   ggtitle("Are adaptive cluster sampling estimators reliable?",
           subtitle="Inclusion forced, soft border finding neighbours")+
-  scale_fill_manual(values=c("lightblue3","lightblue3","red3"))+
-  facet_wrap(~Population)
+  scale_fill_manual(values=c("lightblue3","lightblue3"))+
+  facet_wrap(~Population)+
+  geom_vline(aes(xintercept=Truth),color="red3")
+
 # plot the 9 populations
 ggplot(population_points,aes(x=X,y=Y,color=Group))+
   geom_point()+
@@ -681,3 +691,48 @@ ggplot(population_points,aes(x=X,y=Y,color=Group))+
   ggtitle("How do these estimators vary across populations?",
           subtitle="Inclusion forced, soft border finding neighbours")
 ```
+
+
+```{r}
+for(i in c("soft","hard")){
+  for(j in c("_not","")){
+    # read in results from simulation above
+    results<-read_csv(paste("estimates-inclusion",j,"_forced-",i,"_border.csv",sep=""),
+                      show_col_types = FALSE,
+                      col_select = HH:Population)
+    results_long<-results%>%
+      pivot_longer(cols = HH:TH,
+                   names_to = "Estimator", 
+                   values_to = "Value")
+        # plot the distributions of the estimators across the 9 populations
+    p<-ggplot(results_long,aes(x=Value, y=Estimator, fill=Estimator))+
+      geom_density_ridges(alpha=0.6, stat="binline",bins=20,scale=1)+
+      theme_ridges()+
+      theme(legend.position="none",
+            axis.title.y = element_text( hjust = 0.5),
+            axis.title.x = element_text( hjust = 0.5))+
+      xlab("Estimate") +
+      ylab("Frequency")+
+      ggtitle("Are adaptive cluster sampling estimators reliable?",
+              subtitle=paste("Inclusion",j,"forced,", i,"border finding neighbours"))+
+      scale_fill_manual(values=c("lightblue3","lightblue3"))+
+      facet_wrap(~Population)+
+      geom_vline(aes(xintercept=Truth),color="red3")
+    plot(p)
+  }
+}
+
+```
+```{r}
+results<-read_csv("estimates-inclusion_not_forced-soft_border.csv",
+                      show_col_types = FALSE,
+                      col_select = HH:Population)
+results_long<-results%>%
+      pivot_longer(cols = HH:TH,
+                   names_to = "Estimator", 
+                   values_to = "Value")
+results_pop7<-results%>%
+  filter(Population=="Population 7")
+dim(table(results_pop7$HH))
+```
+
